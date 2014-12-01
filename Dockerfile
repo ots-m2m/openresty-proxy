@@ -1,18 +1,9 @@
-#
-# Openresty dockerfile
-#
-# This docker contains openresty (nginx) compiled from source with useful optional modules installed.
-#
-# http://github.com/tenstartups/openresty-docker
-#
-
 # Pull base image.
 FROM debian:jessie
 
-MAINTAINER Marc Lennox <marc.lennox@gmail.com>
-
 # Set environment.
 ENV DEBIAN_FRONTEND noninteractive
+ENV OPENRESTY_VER 1.7.4.1
 
 # Install packages.
 RUN apt-get update
@@ -20,7 +11,7 @@ RUN apt-get install -y build-essential curl libreadline-dev libncurses5-dev libp
 
 # Compile openresty from source.
 RUN \
-  wget http://openresty.org/download/ngx_openresty-1.7.2.1.tar.gz && \
+  wget "http://openresty.org/download/ngx_openresty-$OPENRESTY_VER.tar.gz" && \
   tar -xzvf ngx_openresty-*.tar.gz && \
   rm -f ngx_openresty-*.tar.gz && \
   cd ngx_openresty-* && \
@@ -39,14 +30,23 @@ RUN luarocks install lua-resty-template
 # Set the working directory.
 WORKDIR /opt/openresty
 
-# Add files to the container.
-ADD . /opt/openresty
-
 # Expose volumes.
-VOLUME ["/etc/nginx"]
+#VOLUME ["/etc/nginx"]
 
-# Set the entrypoint script.
-ENTRYPOINT ["./entrypoint"]
+ # Install Forego
+RUN wget -P /usr/local/bin https://godist.herokuapp.com/projects/ddollar/forego/releases/current/linux-amd64/forego \
+ && chmod u+x /usr/local/bin/forego
 
-# Define the default command.
-CMD ["nginx", "-c", "/etc/nginx/nginx.conf"]
+# Add dockergen built in
+ENV DOCKER_GEN_VERSION 0.3.6
+
+RUN curl -L "https://github.com/jwilder/docker-gen/releases/download/$DOCKER_GEN_VERSION/docker-gen-linux-amd64-$DOCKER_GEN_VERSION.tar.gz" \
+ | tar -C /usr/local/bin -xvzf -
+
+# Add files to the container.
+ADD Procfile /opt/openresty/
+ADD nginx.tmpl /opt/openresty/
+ADD default.conf /etc/nginx/nginx.conf
+RUN mkdir -p /etc/nginx/conf.d
+
+CMD ["forego","start","-r"]
