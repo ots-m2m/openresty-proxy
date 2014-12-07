@@ -1,5 +1,4 @@
-openrestygen:
+openrestyproxy:
   build: .
-  command: forego start -r
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
