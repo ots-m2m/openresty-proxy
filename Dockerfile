@@ -3,6 +3,9 @@ FROM debian:jessie
 
 ENV DEBIAN_FRONTEND noninteractive
 
+# Set the working directory so forego sees the Procfile
+WORKDIR /opt/openresty
+
 # Set versions of OpenResty and dockergen
 ENV OPENRESTY_VER 1.7.7.1
 ENV DOCKER_GEN_VERSION 0.3.6
@@ -38,19 +41,21 @@ RUN \
   ldconfig && \
   mkdir -p /etc/nginx/conf.d
 
+# Expose volume for SSL certificates
+VOLUME ["/etc/nginx/certs"]
+
+# Expose volume for externally linked configurations
+VOLUME ["/etc/nginx/external-conf.d"]
+
 # Install luarocks modules
 RUN luarocks install lua-resty-template
-
-# Expose volumes for SSL certificates
-VOLUME ["/etc/nginx/certs"]
 
  # Install latest version of forego
 RUN \
  wget -P /usr/local/bin https://godist.herokuapp.com/projects/ddollar/forego/releases/current/linux-amd64/forego \
  && chmod u+x /usr/local/bin/forego
 
-# Install pinned verison dockergen
-
+# Install pinned version of docker-gen
 RUN \
  curl -L "https://github.com/jwilder/docker-gen/releases/download/$DOCKER_GEN_VERSION/docker-gen-linux-amd64-$DOCKER_GEN_VERSION.tar.gz" \
  | tar -C /usr/local/bin -xvzf -
@@ -59,10 +64,5 @@ RUN \
 COPY Procfile /opt/openresty/
 COPY nginx.tmpl /opt/openresty/
 COPY default.conf /etc/nginx/nginx.conf
-
-VOLUME ["/etc/nginx/external-conf.d"]
-
-# Set the working directory so forego sees the Procfile
-WORKDIR /opt/openresty
 
 CMD ["forego","start","-r"]
