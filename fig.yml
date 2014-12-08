@@ -1,4 +1,12 @@
+redis:
+  image: redis:latest
+
 openrestyproxy:
   build: .
+  links:
+    - redis:redis
+  ports:
+    - 80:80
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
+    - sites:/etc/nginx/external-conf.d
