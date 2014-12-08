@@ -60,6 +60,8 @@ COPY Procfile /opt/openresty/
 COPY nginx.tmpl /opt/openresty/
 COPY default.conf /etc/nginx/nginx.conf
 
+VOLUME ["/etc/nginx/external-conf.d"]
+
 # Set the working directory so forego sees the Procfile
 WORKDIR /opt/openresty
 
