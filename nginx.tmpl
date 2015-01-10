@@ -1,4 +1,4 @@
-# https://github.com/jwilder/nginx-proxy/blob/080a5157e6b1de3637e339a7cf54105f0316cfa7/nginx.tmpl
+# https://github.com/jwilder/nginx-proxy/blob/6d646d92f8d2e7fea8aee54c07c730d948b67c6e/nginx.tmpl
 
 # If we receive X-Forwarded-Proto, pass it through; otherwise, pass along the
 # scheme used to connect to this server
@@ -16,7 +16,11 @@ map $http_upgrade $proxy_connection {
 
 gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript;
 
-access_log /proc/self/fd/1;
+log_format vhost '$host $remote_addr - $remote_user [$time_local] '
+                 '"$request" $status $body_bytes_sent '
+                 '"$http_referer" "$http_user_agent"';
+
+access_log /proc/self/fd/1 vhost;
 error_log /proc/self/fd/2;
 
 # HTTP 1.1 support
@@ -32,8 +36,6 @@ proxy_set_header X-Forwarded-Proto $proxy_x_forwarded_proto;
 server {
 	listen 80 default_server;
 	server_name _; # This is just an invalid value which will never trigger on a real hostname.
-	error_log /proc/self/fd/2;
-	access_log /proc/self/fd/1;
 	return 503;
 }
 
@@ -106,6 +108,10 @@ server {
 
 	location / {
 		proxy_pass http://{{ $host }};
+		{{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
+		auth_basic	"Restricted {{ $host }}";
+		auth_basic_user_file	{{ (printf "/etc/nginx/htpasswd/%s" $host) }};
+		{{ end }}
 	}
 }
 {{ else }}
@@ -115,6 +121,10 @@ server {
 
 	location / {
 		proxy_pass http://{{ $host }};
+		{{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
+		auth_basic	"Restricted {{ $host }}";
+		auth_basic_user_file	{{ (printf "/etc/nginx/htpasswd/%s" $host) }};
+		{{ end }}
 	}
 }
 
