@@ -7,8 +7,8 @@ ENV DEBIAN_FRONTEND noninteractive
 WORKDIR /opt/openresty
 
 # Set versions of OpenResty and dockergen
-ENV OPENRESTY_VER 1.7.7.1
-ENV DOCKER_GEN_VERSION 0.3.6
+ENV OPENRESTY_VER 1.7.10.1
+ENV DOCKER_GEN_VERSION 0.3.9
 
 # Install packages.
 RUN apt-get update
