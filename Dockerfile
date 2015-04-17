@@ -16,11 +16,6 @@ VOLUME ["/etc/nginx/certs"]
 # Expose volume for externally linked configurations
 VOLUME ["/etc/nginx/external-conf.d"]
 
-# Install pinned version of docker-gen
-RUN \
- curl -L "https://github.com/jwilder/docker-gen/releases/download/$DOCKER_GEN_VERSION/docker-gen-linux-amd64-$DOCKER_GEN_VERSION.tar.gz" \
- | tar -C /usr/local/bin -xvzf -
-
 # Install packages.
 RUN apt-get update \
 && apt-get install -y build-essential \
@@ -32,14 +27,17 @@ RUN apt-get update \
                       lua5.2 \
                       luarocks \
                       nano \
-                      perl \
-                      wget
+                      perl
+
+# Install pinned version of docker-gen
+RUN \
+ curl -L "https://github.com/jwilder/docker-gen/releases/download/$DOCKER_GEN_VERSION/docker-gen-linux-amd64-$DOCKER_GEN_VERSION.tar.gz" \
+ | tar -C /usr/local/bin -xvzf -
 
 # Compile openresty from source.
 RUN \
-  wget "http://openresty.org/download/ngx_openresty-$OPENRESTY_VER.tar.gz" && \
-  tar -xzvf ngx_openresty-*.tar.gz && \
-  rm -f ngx_openresty-*.tar.gz && \
+  curl -L "http://openresty.org/download/ngx_openresty-$OPENRESTY_VER.tar.gz" \
+  | tar -xzvf - && \
   cd ngx_openresty-* && \
   ./configure --with-pcre-jit --with-ipv6 && \
   make && \
