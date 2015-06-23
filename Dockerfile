@@ -49,7 +49,6 @@ apt-get update \
                                     libncurses5-dev \
                                     libpcre3-dev \
                                     libssl-dev \ 
-#&& luarocks install lua-resty-template \
 && wget -P /usr/local/bin https://godist.herokuapp.com/projects/ddollar/forego/releases/current/linux-amd64/forego \
 && chmod u+x /usr/local/bin/forego
 
