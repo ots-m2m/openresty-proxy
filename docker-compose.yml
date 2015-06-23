@@ -1,10 +1,10 @@
-redis:
-  image: redis:latest
+#redis:
+#  image: redis:latest
 
 openrestyproxy:
   build: .
-  links:
-    - redis:redis
+#  links:
+#    - redis:redis
   ports:
     - 80:80
   volumes:
