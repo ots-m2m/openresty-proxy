@@ -44,11 +44,11 @@ apt-get update \
  mkdir -p /etc/nginx/conf.d \
  && rm -rf /var/lib/apt/lists/* \
  && apt-get purge -y --auto-remove build-essential \
-                                    curl \
-                                    libreadline-dev \
-                                    libncurses5-dev \
-                                    libpcre3-dev \
-                                    libssl-dev \ 
+                                   curl \
+                                   libreadline-dev \
+                                   libncurses5-dev \
+                                   libpcre3-dev \
+                                   libssl-dev \ 
 && wget -P /usr/local/bin https://godist.herokuapp.com/projects/ddollar/forego/releases/current/linux-amd64/forego \
 && chmod u+x /usr/local/bin/forego
 
