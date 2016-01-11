@@ -8,5 +8,7 @@ openrestyproxy:
   ports:
     - 80:80
   volumes:
-    - /var/run/docker.sock:/var/run/docker.sock
+    - /var/run/docker.sock:/tmp/docker.sock:ro
     - sites:/etc/nginx/external-conf.d
+  environment:
+    - DOCKER_HOST=unix:///tmp/docker.sock

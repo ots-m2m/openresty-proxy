@@ -2,8 +2,8 @@
 FROM debian:jessie
 
 # Set versions of OpenResty and dockergen
-ENV OPENRESTY_VER 1.7.10.1
-ENV DOCKER_GEN_VERSION 0.3.9
+ENV OPENRESTY_VER 1.9.3.2
+ENV DOCKER_GEN_VERSION 0.4.2
 
 # Set the working directory so forego sees the Procfile
 WORKDIR /opt/openresty
@@ -56,5 +56,7 @@ apt-get update \
 COPY Procfile /opt/openresty/
 COPY nginx.tmpl /opt/openresty/
 COPY default.conf /etc/nginx/nginx.conf
+
+ENV DOCKER_HOST unix:///tmp/docker.sock
 
 CMD ["forego","start","-r"]
