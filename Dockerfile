@@ -30,9 +30,9 @@ RUN \
   | tar xz -C /usr/local/bin \
   && chmod u+x /usr/local/bin/forego
 
-# Set versions of OpenResty and dockergen
 ENV OPENRESTY_VER 1.11.2.1
 ENV DOCKER_GEN_VERSION 0.7.3
+ENV NGX_SUBSTITUTIONS_FILTER_VERSION 0.6.4
 
 RUN \
   curl -L "https://github.com/jwilder/docker-gen/releases/download/$DOCKER_GEN_VERSION/docker-gen-linux-amd64-$DOCKER_GEN_VERSION.tar.gz" \
@@ -40,7 +40,9 @@ RUN \
   && curl -L "https://openresty.org/download/openresty-$OPENRESTY_VER.tar.gz" \
   | tar -xzvf - && \
   cd openresty-$OPENRESTY_VER && \
-  ./configure --with-pcre-jit --with-ipv6 && \
+  curl -sSL "https://github.com/yaoweibin/ngx_http_substitutions_filter_module/archive/v$NGX_SUBSTITUTIONS_FILTER_VERSION.tar.gz" \
+  | tar xz && \
+  ./configure --with-pcre-jit --with-ipv6 --add-module=./ngx_http_substitutions_filter_module-$NGX_SUBSTITUTIONS_FILTER_VERSION && \
   make && \
   make install && \
   make clean && \
