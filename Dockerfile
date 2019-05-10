@@ -1,5 +1,5 @@
 # Pull base image.
-FROM debian:stretch
+FROM debian:jessie
 
 # Set the working directory so forego sees the Procfile
 WORKDIR /opt/openresty
