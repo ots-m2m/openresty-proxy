@@ -20,6 +20,9 @@ jobs:
               aws configure set default.region ap-southeast-2
               aws configure set default.output json
               eval $(aws ecr get-login)
+              gitHash=$(git rev-parse --short HEAD)
               docker tag gridthings/nginx:latest 337134270675.dkr.ecr.ap-southeast-2.amazonaws.com/gridthings/nginx:latest
               docker push 337134270675.dkr.ecr.ap-southeast-2.amazonaws.com/gridthings/nginx:latest
+              docker tag gridthings/nginx:latest 337134270675.dkr.ecr.ap-southeast-2.amazonaws.com/gridthings/nginx:$gitHash
+              docker push 337134270675.dkr.ecr.ap-southeast-2.amazonaws.com/gridthings/nginx:$gitHash
             fi
