@@ -42,7 +42,7 @@ RUN \
   cd openresty-$OPENRESTY_VER && \
   curl -sSL "https://github.com/yaoweibin/ngx_http_substitutions_filter_module/archive/v$NGX_SUBSTITUTIONS_FILTER_VERSION.tar.gz" \
   | tar xz && \
-  ./configure --with-pcre-jit --with-ipv6 --add-module=./ngx_http_substitutions_filter_module-$NGX_SUBSTITUTIONS_FILTER_VERSION && \
+  ./configure --with-pcre-jit --with-ipv6  && \
   make && \
   make install && \
   make clean && \
