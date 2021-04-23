@@ -30,8 +30,8 @@ RUN \
   | tar xz -C /usr/local/bin \
   && chmod u+x /usr/local/bin/forego
 
-ENV OPENRESTY_VER 1.13.6.2
-ENV DOCKER_GEN_VERSION 0.7.5
+ENV OPENRESTY_VER 1.11.2.1
+ENV DOCKER_GEN_VERSION 0.7.3
 ENV NGX_SUBSTITUTIONS_FILTER_VERSION 0.6.4
 
 RUN \
