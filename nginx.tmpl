@@ -1,22 +1,23 @@
+
 # https://github.com/jwilder/nginx-proxy/blob/ec7169c112db37f2869dc264ddda5854c9716bcc/nginx.tmpl
 
 {{ $CurrentContainer := where $ "ID" .Docker.CurrentContainerID | first }}
 
 {{ define "upstream" }}
-	{{ if .Address }}
-		{{/* If we got the containers from swarm and this container's port is published to host, use host IP:PORT */}}
-		{{ if and .Container.Node.ID .Address.HostPort }}
-			# {{ .Container.Node.Name }}/{{ .Container.Name }}
-			server {{ .Container.Node.Address.IP }}:{{ .Address.HostPort }};
-		{{/* If there is no swarm node or the port is not published on host, use container's IP:PORT */}}
-		{{ else if .Network }}
-			# {{ .Container.Name }}
-			server {{ .Network.IP }}:{{ .Address.Port }};
-		{{ end }}
-	{{ else if .Network }}
-		# {{ .Container.Name }}
-		server {{ .Network.IP }} down;
-	{{ end }}
+        {{ if .Address }}
+                {{/* If we got the containers from swarm and this container's port is published to host, use host IP:PORT */}}
+                {{ if and .Container.Node.ID .Address.HostPort }}
+                        # {{ .Container.Node.Name }}/{{ .Container.Name }}
+                        server {{ .Container.Node.Address.IP }}:{{ .Address.HostPort }};
+                {{/* If there is no swarm node or the port is not published on host, use container's IP:PORT */}}
+                {{ else if .Network }}
+                        # {{ .Container.Name }}
+                        server {{ .Network.IP }}:{{ .Address.Port }};
+                {{ end }}
+        {{ else if .Network }}
+                # {{ .Container.Name }}
+                server {{ .Network.IP }} down;
+        {{ end }}
 {{ end }}
 
 # If we receive X-Forwarded-Proto, pass it through; otherwise, pass along the
@@ -39,7 +40,8 @@ log_format vhost '$host $remote_addr - $remote_user [$time_local] '
                  '"$request" $status $body_bytes_sent '
                  '"$http_referer" "$http_user_agent"';
 
-access_log off;
+access_log on;
+error_log on;
 
 {{ if (exists "/etc/nginx/proxy.conf") }}
 include /etc/nginx/proxy.conf;
@@ -53,54 +55,49 @@ proxy_set_header Connection $proxy_connection;
 proxy_set_header X-Real-IP $remote_addr;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 proxy_set_header X-Forwarded-Proto $proxy_x_forwarded_proto;
+proxy_ignore_client_abort on;
 
 # Mitigate httpoxy attack (see README for details)
 proxy_set_header Proxy "";
 {{ end }}
 
 server {
-	server_name _; # This is just an invalid value which will never trigger on a real hostname.
-	listen 80;
-	access_log /var/log/nginx/access.log vhost;
-	return 503;
+        server_name _; # This is just an invalid value which will never trigger on a real hostname.
+        #listen 80;
+        listen *:80;
+        listen [::]:80;
+        #access_log /var/log/nginx/access.log vhost;
+        #error_log /var/log/nginx/error.log debug;
+        access_log /dev/stdout vhost;
+        error_log /dev/stdout info;
+        #error_log stderr info;
+        return 503;
 }
-
-{{ if (and (exists "/etc/nginx/certs/default.crt") (exists "/etc/nginx/certs/default.key")) }}
-server {
-	server_name _; # This is just an invalid value which will never trigger on a real hostname.
-	listen 443 ssl http2;
-	access_log /var/log/nginx/access.log vhost;
-	return 503;
-
-	ssl_certificate /etc/nginx/certs/default.crt;
-	ssl_certificate_key /etc/nginx/certs/default.key;
-}
-{{ end }}
 
 {{ range $host, $containers := groupByMulti $ "Env.VIRTUAL_HOST" "," }}
 
 upstream {{ $host }} {
 {{ range $container := $containers }}
-	{{ $addrLen := len $container.Addresses }}
+        {{ $addrLen := len $container.Addresses }}
+        keepalive 64;
+        {{ range $knownNetwork := $CurrentContainer.Networks }}
+                {{ range $containerNetwork := $container.Networks }}
+                        {{ if eq $knownNetwork.Name $containerNetwork.Name }}
+                                ## Can be connect with "{{ $containerNetwork.Name }}" network
 
-	{{ range $knownNetwork := $CurrentContainer.Networks }}
-		{{ range $containerNetwork := $container.Networks }}
-			{{ if eq $knownNetwork.Name $containerNetwork.Name }}
-				## Can be connect with "{{ $containerNetwork.Name }}" network
-
-				{{/* If only 1 port exposed, use that */}}
-				{{ if eq $addrLen 1 }}
-					{{ $address := index $container.Addresses 0 }}
-					{{ template "upstream" (dict "Container" $container "Address" $address "Network" $containerNetwork) }}
-				{{/* If more than one port exposed, use the one matching VIRTUAL_PORT env var, falling back to standard web port 80 */}}
-				{{ else }}
-					{{ $port := coalesce $container.Env.VIRTUAL_PORT "80" }}
-					{{ $address := where $container.Addresses "Port" $port | first }}
-					{{ template "upstream" (dict "Container" $container "Address" $address "Network" $containerNetwork) }}
-				{{ end }}
-			{{ end }}
-		{{ end }}
-	{{ end }}
+                                {{/* If only 1 port exposed, use that */}}
+                                {{ if eq $addrLen 1 }}
+                                        {{ $address := index $container.Addresses 0 }}
+                                        {{ template "upstream" (dict "Container" $container "Address" $address "Network" $containerNetwork) }}
+                                {{/* If more than one port exposed, use the one matching VIRTUAL_PORT env var, falling back to standard web port 80 */}}
+                                {{ else }}
+                                        {{ $port := coalesce $container.Env.VIRTUAL_PORT "80" }}
+                                        {{ $address := where $container.Addresses "Port" $port | first }}
+                                        {{ template "upstream" (dict "Container" $container "Address" $address "Network" $containerNetwork) }}
+                                {{ end }}
+                        {{ end }}
+                {{ end }}
+        {{ end }}
 {{ end }}
 }
 
@@ -128,64 +125,194 @@ upstream {{ $host }} {
 
 {{ $is_https := (and (ne $cert "") (exists (printf "/etc/nginx/certs/%s.crt" $cert)) (exists (printf "/etc/nginx/certs/%s.key" $cert))) }}
 
+{{ $jwt := or (first (groupByKeys $containers "Env.JWT_AUTH")) "false" }}
+
+{{ $pass_cookies := or (first (groupByKeys $containers "Env.PROXY_PASS_COOKIES")) "false" }}
+
+{{ $is_websockets := or (first (groupByKeys $containers "Env.WEBSOCKETS")) "false" }}
+
+{{ $request_origin := or (first (groupByKeys $containers "Env.REQUEST_ORIGIN")) "false" }}
+
+{{ $allows_credentials := or (first (groupByKeys $containers "Env.ALLOW_CREDENTIALS")) "false" }}
+
+{{ $azure_ad_login := or (first (groupByKeys $containers "Env.AZURE_AD_LOGIN")) "fasd" }}
+
+{{ $keycloak_login := or (first (groupByKeys $containers "Env.KEYCLOAK_LOGIN")) "false" }}
+
 {{ if $is_https }}
 
+
+# Redirect http to https $host
+server {
+        server_name {{ $host }};
+        listen 80 {{ $default_server }};
+        listen [::]:80 {{ $default_server }};
+        access_log /var/log/nginx/access.log vhost;
+        error_log /var/log/nginx/error.log debug;
+        #access_log /dev/stdout vhost;
+        #error_log /dev/stdout info;
+        #error_log stderr info;
 {{ if eq $https_method "redirect" }}
-server {
-	server_name {{ $host }};
-	listen 80 {{ $default_server }};
-	access_log /var/log/nginx/access.log vhost;
-	return 301 https://$host$request_uri;
-}
+        location '/' {
+          return 301 https://$host$request_uri;
+        }
 {{ end }}
+        location '/.well-known/acme-challenge' {
+          default_type "text/plain";
+          allow all;
+          root /usr/share/nginx/html/;
+        }
+}
 
 server {
-	server_name {{ $host }};
-	listen 443 ssl http2 {{ $default_server }};
-	access_log /var/log/nginx/access.log vhost;
+        server_name {{ $host }};
+        listen 443 ssl  {{ $default_server }};
+        listen [::]:443 ssl {{ $default_server }};
+        #access_log /var/log/nginx/access.log vhost;
+        #error_log /var/log/nginx/error.log info;
+        access_log /dev/stdout vhost;
+        error_log /dev/stdout info;
+        #error_log stderr info;
 
-	ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-	ssl_ciphers 'ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA:!DSS';
+        ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+        ssl_ciphers 'ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA:!DSS';
 
-	ssl_prefer_server_ciphers on;
-	ssl_session_timeout 5m;
-	ssl_session_cache shared:SSL:50m;
-	ssl_session_tickets off;
+        ssl_prefer_server_ciphers on;
+        ssl_session_timeout 5m;
+        ssl_session_cache shared:SSL:50m;
+        ssl_session_tickets off;
 
-	ssl_certificate /etc/nginx/certs/{{ (printf "%s.crt" $cert) }};
-	ssl_certificate_key /etc/nginx/certs/{{ (printf "%s.key" $cert) }};
+        ssl_certificate /etc/nginx/certs/{{ (printf "%s.crt" $cert) }};
+        ssl_certificate_key /etc/nginx/certs/{{ (printf "%s.key" $cert) }};
 
-	{{ if (exists (printf "/etc/nginx/certs/%s.dhparam.pem" $cert)) }}
-	ssl_dhparam {{ printf "/etc/nginx/certs/%s.dhparam.pem" $cert }};
-	{{ end }}
+        {{ if (exists (printf "/etc/nginx/certs/%s.dhparam.pem" $cert)) }}
+        ssl_dhparam {{ printf "/etc/nginx/certs/%s.dhparam.pem" $cert }};
+        {{ end }}
 
-	{{ if (ne $https_method "noredirect") }}
-	add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-	{{ end }}
+        {{ if eq $azure_ad_login "true" }}
+        resolver 8.8.8.8 ipv6=off;
+        {{end}}
 
-	{{ if (exists (printf "/etc/nginx/vhost.d/%s" $host)) }}
-	include {{ printf "/etc/nginx/vhost.d/%s" $host }};
-	{{ else if (exists "/etc/nginx/vhost.d/default") }}
-	include /etc/nginx/vhost.d/default;
-	{{ end }}
+        {{ if eq $keycloak_login "true" }}
+        resolver 8.8.8.8 ipv6=off;
+        {{end}}
 
-	location / {
-		{{ if eq $proto "uwsgi" }}
-		include uwsgi_params;
-		uwsgi_pass {{ trim $proto }}://{{ trim $host }};
-		{{ else }}
-		proxy_pass {{ trim $proto }}://{{ trim $host }};
-		{{ end }}
-		{{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
-		auth_basic	"Restricted {{ $host }}";
-		auth_basic_user_file	{{ (printf "/etc/nginx/htpasswd/%s" $host) }};
-		{{ end }}
+        {{ if (ne $https_method "noredirect") }}
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        {{ end }}
+
+        {{ if (exists (printf "/etc/nginx/vhost.d/%s" $host)) }}
+        include {{ printf "/etc/nginx/vhost.d/%s" $host }};
+        {{ else if (exists "/etc/nginx/vhost.d/default") }}
+        include /etc/nginx/vhost.d/default;
+        {{ end }}
+        location / {
+                keepalive_timeout 0;
+                client_max_body_size       2m;
+
+                if ($request_method = 'OPTIONS') {
+                        {{ if (eq $request_origin "false") }}
+                        add_header 'Access-Control-Allow-Origin' '*';
+                        {{ else }}
+                        add_header 'Access-Control-Allow-Origin' '{{ $request_origin }}';
+                        {{ end }}
+                        {{ if (eq $allows_credentials "true") }}
+                        add_header 'Access-Control-Allow-Credentials' 'true';
+                        {{ end }}
+                        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+                        # Custom headers and headers various browsers *should* be OK with but aren't
+                        add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+                        # Tell client that this pre-flight info is valid for 20 days
+                        add_header 'Access-Control-Max-Age' 1728000;
+                        add_header 'Content-Type' 'text/plain; charset=utf-8';
+                        add_header 'Content-Length' 0;
+                        return 204;
+                }
+                if ($request_method = 'POST') {
+                        {{ if (eq $request_origin "false") }}
+                        add_header 'Access-Control-Allow-Origin' '*';
+                        {{ else }}
+                        add_header 'Access-Control-Allow-Origin' '{{ $request_origin }}';
+                        {{ end }}
+                        {{ if (eq $allows_credentials "true") }}
+                        add_header 'Access-Control-Allow-Credentials' 'true';
+                        {{ end }}
+                        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+                        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+                        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+                }
+                if ($request_method = 'GET') {
+                        {{ if (eq $request_origin "false") }}
+                        add_header 'Access-Control-Allow-Origin' '*';
+                        {{ else }}
+                        add_header 'Access-Control-Allow-Origin' '{{ $request_origin }}';
+                        {{ end }}
+                        {{ if (eq $allows_credentials "true") }}
+                        add_header 'Access-Control-Allow-Credentials' 'true';
+                        {{ end }}
+                        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+                        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+                        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+
+
+                }
+
+
+                body_filter_by_lua_block {
+                        if ngx.header.content_type then
+                                if string.find (ngx.header.content_type,"text/html") then
+                                        replacestr = "<script>window.addEventListener(\"message\", (event)=>{console.log(\"iFrame got new access token: \" + JSON.stringify(event.data.access_token ));window.document.cookie = \"access_token=\"  + event.data.access_token + \"; SameSite=None; Secure\";}, false);</script></head>"
+                                        ngx.arg[1] = ngx.re.sub(ngx.arg[1],"</head>", replacestr)
+
+                                end
+                        end
+                        return
+                }
+
+                #header_filter_by_lua_block {
+                #       local h = ngx.req.get_headers()
+                #       for k, v in pairs(h) do
+                #               ngx.log(ngx.ERR, "Got header "..k..": "..v..";")
+                #        end
+                #}
+
+                proxy_set_header connection  "";
+                {{ if eq $pass_cookies "true" }}
+                {{ else }}
+                proxy_set_header cookie "";
+                {{ end }}
+
+                {{ if eq $jwt "true" }}
+                access_by_lua '
+                        local jwt = require("nginx-jwt")
+                        jwt.auth()
+                ';
+                {{ end }}
+
+                {{ if eq $proto "uwsgi" }}
+                include uwsgi_params;
+                uwsgi_pass {{ trim $proto }}://{{ trim $host }};
+                {{ else }}
+                proxy_pass {{ trim $proto }}://{{ trim $host }};
+                {{ end }}
+
+
+                {{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
+                auth_basic      "Restricted {{ $host }}";
+                auth_basic_user_file    {{ (printf "/etc/nginx/htpasswd/%s" $host) }};
+                {{ end }}
                 {{ if (exists (printf "/etc/nginx/vhost.d/%s_location" $host)) }}
                 include {{ printf "/etc/nginx/vhost.d/%s_location" $host}};
                 {{ else if (exists "/etc/nginx/vhost.d/default_location") }}
                 include /etc/nginx/vhost.d/default_location;
                 {{ end }}
-	}
+
+                {{ if eq $is_websockets "true" }}
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                {{ end }}
+        }
 }
 
 {{ end }}
@@ -193,46 +320,62 @@ server {
 {{ if or (not $is_https) (eq $https_method "noredirect") }}
 
 server {
-	server_name {{ $host }};
-	listen 80 {{ $default_server }};
-	access_log /var/log/nginx/access.log vhost;
+        server_name {{ $host }};
+        listen 80 {{ $default_server }};
+        listen [::]:80 {{ $default_server }};
+        access_log /var/log/nginx/access.log vhost;
+        error_log /var/log/nginx/error.log info;
+        #access_log /dev/stdout vhost;
+        #error_log /dev/stdout info;
+        #error_log stderr info;
 
-	{{ if (exists (printf "/etc/nginx/vhost.d/%s" $host)) }}
-	include {{ printf "/etc/nginx/vhost.d/%s" $host }};
-	{{ else if (exists "/etc/nginx/vhost.d/default") }}
-	include /etc/nginx/vhost.d/default;
-	{{ end }}
+        {{ if (exists (printf "/etc/nginx/vhost.d/%s" $host)) }}
+        include {{ printf "/etc/nginx/vhost.d/%s" $host }};
+        {{ else if (exists "/etc/nginx/vhost.d/default") }}
+        include /etc/nginx/vhost.d/default;
+        {{ end }}
 
-	location / {
-		{{ if eq $proto "uwsgi" }}
-		include uwsgi_params;
-		uwsgi_pass {{ trim $proto }}://{{ trim $host }};
-		{{ else }}
-		proxy_pass {{ trim $proto }}://{{ trim $host }};
-		{{ end }}
-		{{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
-		auth_basic	"Restricted {{ $host }}";
-		auth_basic_user_file	{{ (printf "/etc/nginx/htpasswd/%s" $host) }};
-		{{ end }}
+        location / {
+                {{ if eq $proto "uwsgi" }}
+                include uwsgi_params;
+                uwsgi_pass {{ trim $proto }}://{{ trim $host }};
+                {{ else }}
+                proxy_pass {{ trim $proto }}://{{ trim $host }};
+                {{ end }}
+
+
+                {{ if eq $azure_ad_login "true" }}
+                resolver 8.8.8.8;
+                {{end}}
+
+                {{ if eq $keycloak_login "true" }}
+                resolver 8.8.8.8;
+                {{end}}
+
+                {{ if eq $jwt "true" }}
+                access_by_lua '
+                        local jwt = require("nginx-jwt")
+                        jwt.auth()
+                ';
+                {{ end }}
+
+                {{ if (exists (printf "/etc/nginx/htpasswd/%s" $host)) }}
+                auth_basic      "Restricted {{ $host }}";
+                auth_basic_user_file    {{ (printf "/etc/nginx/htpasswd/%s" $host) }};
+                {{ end }}
                 {{ if (exists (printf "/etc/nginx/vhost.d/%s_location" $host)) }}
                 include {{ printf "/etc/nginx/vhost.d/%s_location" $host}};
                 {{ else if (exists "/etc/nginx/vhost.d/default_location") }}
                 include /etc/nginx/vhost.d/default_location;
                 {{ end }}
-	}
-}
+        }
+        location '/.well-known/acme-challenge' {
+          default_type "text/plain";
+          allow all;
+          root /usr/share/nginx/html/;
+        }
 
-{{ if (and (not $is_https) (exists "/etc/nginx/certs/default.crt") (exists "/etc/nginx/certs/default.key")) }}
-server {
-	server_name {{ $host }};
-	listen 443 ssl http2 {{ $default_server }};
-	access_log /var/log/nginx/access.log vhost;
-	return 500;
-
-	ssl_certificate /etc/nginx/certs/default.crt;
-	ssl_certificate_key /etc/nginx/certs/default.key;
 }
-{{ end }}
 
 {{ end }}
 {{ end }}
